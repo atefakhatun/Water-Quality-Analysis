@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block title %}Analysis Result | AquaPurity{% endblock %}
+{% block header %}Water Quality Result{% endblock %}
+{% block subheader %}Here is the analysis based on your input{% endblock %}
+
+{% block content %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Water Quality Prediction Results</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="main-container">
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-flask me-2"></i>Water Quality Analysis Results
+                    </div>
+                    <div class="card-body result-card">
+                        <div id="result-container"></div>
+                        <div class="mt-4">
+                            <a href="/" class="btn btn-primary me-2">
+                                <i class="fas fa-redo me-1"></i> New Prediction
+                            </a>
+                            <button id="download-pdf" class="btn btn-secondary">
+                                <i class="fas fa-download me-1"></i> Download Report
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-list-alt me-2"></i>Input Parameters
+                            </div>
+                            <div class="card-body">
+                                <table class="table table-striped parameter-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Parameter</th>
+                                            <th>Value</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="parameter-table"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="fas fa-chart-bar me-2"></i>Parameter Visualization
+                            </div>
+                            <div class="card-body">
+                                <canvas id="waterQualityChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <i class="fas fa-lightbulb me-2"></i>Recommendations
+                    </div>
+                    <div class="card-body">
+                        <div id="recommendations"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const predictionResult = sessionStorage.getItem('predictionResult');
+        const waterData = JSON.parse(sessionStorage.getItem('waterQualityData'));
+
+        if (!predictionResult || !waterData) {
+            window.location.href = '/';
+            return;
+        }
+
+        const parameterTable = document.getElementById('parameter-table');
+        const parameterMapping = {
+            'temperature': 'Temperature (°C)',
+            'do': 'D.O (mg/L)',
+            'ph': 'pH',
+            'conductivity': 'Conductivity (µS/cm)',
+            'bod': 'B.O.D (mg/L)',
+            'nitrate': 'Nitrate (mg/L)',
+            'fecalcoliform': 'Fecal Coliform (MPN/100mL)',
+            'totalcoliform': 'Total Coliform (MPN/100mL)',
+            'state': 'State'
+        };
+
+        let tableContent = '';
+        for (const [key, value] of Object.entries(waterData)) {
+            if (parameterMapping[key]) {
+                tableContent += `
+                    <tr>
+                        <td>${parameterMapping[key]}</td>
+                        <td>${value}</td>
+                    </tr>
+                `;
+            }
+        }
+        parameterTable.innerHTML = tableContent;
+
+        const parameterRanges = {
+            "Temperature (°C)": { min: 10, max: 30 },
+            "D.O (mg/L)": { min: 4, max: 12 },
+            "pH": { min: 6.5, max: 8.5 },
+            "Conductivity (µS/cm)": { min: 50, max: 1500 },
+            "B.O.D (mg/L)": { min: 0, max: 3 },
+            "Nitrate (mg/L)": { min: 0, max: 10 },
+            "Fecal Coliform (MPN/100mL)": { min: 0, max: 0 },
+            "Total Coliform (MPN/100mL)": { min: 0, max: 50 }
+        };
+
+        const labels = Object.values(parameterMapping).filter(p => parameterRanges[p]);
+        const paramOrder = ['temperature', 'do', 'ph', 'conductivity', 'bod', 'nitrate', 'fecalcoliform', 'totalcoliform'];
+
+        const userValues = [], minValues = [], maxValues = [];
+
+        paramOrder.forEach((param, i) => {
+            if (waterData[param]) {
+                const name = labels[i];
+                userValues.push(parseFloat(waterData[param]));
+                minValues.push(parameterRanges[name].min);
+                maxValues.push(parameterRanges[name].max);
+            }
+        });
+
+        new Chart(document.getElementById("waterQualityChart").getContext("2d"), {
+            type: "bar",
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: "User Input Values",
+                        data: userValues,
+                        backgroundColor: 'rgba(71, 244, 255, 0.6)',
+                        borderColor: 'rgba(71, 244, 255, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: "Minimum Acceptable Range",
+                        data: minValues,
+                        backgroundColor: 'rgba(34, 0, 255, 0.6)',
+                        borderColor: 'rgba(34, 0, 255, 1)',
+                        borderWidth: 1,
+                        type: 'line'
+                    },
+                    {
+                        label: "Maximum Acceptable Range",
+                        data: maxValues,
+                        backgroundColor: 'rgba(255, 0, 0, 0.6)',
+                        borderColor: 'rgba(255, 0, 0, 1)',
+                        borderWidth: 1,
+                        type: 'line'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    title: { display: true, text: 'Water Quality Parameters Comparison' }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: 'Parameter Values' }
+                    }
+                }
+            }
+        });
+
+        const resultContainer = document.getElementById('result-container');
+        const recommendations = document.getElementById('recommendations');
+
+        if (predictionResult === 'Drinkable') {
+            resultContainer.innerHTML = `
+                <i class="fas fa-check-circle result-icon drinkable"></i>
+                <h2 class="result-title drinkable">Water is Drinkable</h2>
+                <p class="lead">Based on the parameters you provided, this water sample is safe for consumption.</p>
+            `;
+            recommendations.innerHTML = `
+                <p class="lead">Even though the water is classified as drinkable, here are some general recommendations:</p>
+                <ul class="recommendation-list">
+                    <li>Regularly test your water source for contaminants to ensure continued safety.</li>
+                    <li>Store drinking water in clean, closed containers to prevent contamination.</li>
+                    <li>Consider additional filtration systems as an extra safety measure.</li>
+                    <li>Be aware of seasonal changes that might affect water quality.</li>
+                </ul>
+            `;
+        } else {
+            resultContainer.innerHTML = `
+                <i class="fas fa-times-circle result-icon not-drinkable"></i>
+                <h2 class="result-title not-drinkable">Water is Not Drinkable</h2>
+                <p class="lead">Based on the parameters you provided, this water sample is not safe for consumption.</p>
+            `;
+            recommendations.innerHTML = `
+                <p class="lead">Based on your water quality analysis, here are some recommendations:</p>
+                <ul class="recommendation-list">
+                    <li>Do not consume this water without proper treatment.</li>
+                    <li>Use purification methods such as boiling, filtration, or chemical treatment.</li>
+                    <li>Consult with local water authorities about your water source.</li>
+                    <li>Install an appropriate treatment system based on contaminants present.</li>
+                </ul>
+            `;
+        }
+
+        // Download Report Functionality
+        document.getElementById('download-pdf').addEventListener('click', async function () {
+            const { jsPDF } = window.jspdf;
+
+            const downloadBtn = document.getElementById('download-pdf');
+            const newPredictionBtn = document.querySelector('.btn-primary');
+            downloadBtn.style.display = 'none';
+            newPredictionBtn.style.display = 'none';
+
+            const mainContainer = document.querySelector('.main-container');
+            await html2canvas(mainContainer, { scale: 2 }).then((canvas) => {
+                const imgData = canvas.toDataURL('image/png');
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const imgProps = pdf.getImageProperties(imgData);
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                pdf.save('Water_Quality_Report.pdf');
+            });
+
+            downloadBtn.style.display = 'inline-block';
+            newPredictionBtn.style.display = 'inline-block';
+        });
+    });
+    </script>
+</body>
+</html>
+{% endblock %}
